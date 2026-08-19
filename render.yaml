@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: terabox-vault-backend
+    env: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: node server.js
+    disk:
+      name: vault-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: DB_PATH
+        value: /data/vault.db
+      - key: MASTER_KEY
+        sync: false
+      - key: ADMIN_TOKEN
+        sync: false

@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Vault Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --border: #262b36;
+    --text: #e8eaed;
+    --muted: #8a8f9a;
+    --accent: #4f8cff;
+    --danger: #ff5c5c;
+    --ok: #3ddc84;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 32px 16px 80px;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 28px; }
+  .gate {
+    max-width: 360px; margin: 80px auto; text-align: center;
+  }
+  .gate input {
+    width: 100%; margin-top: 16px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .card h2 { font-size: 14px; margin: 0 0 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  input, select {
+    background: #0f1115;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    width: 100%;
+    margin-bottom: 10px;
+  }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  button:hover { opacity: 0.9; }
+  button.danger { background: var(--danger); }
+  button.ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+  .row { display: flex; gap: 8px; align-items: center; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+  .empty { color: var(--muted); font-size: 13px; padding: 12px 0; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; }
+  .pill.ok { background: rgba(61,220,132,0.15); color: var(--ok); }
+  .pill.revoked { background: rgba(255,92,92,0.15); color: var(--danger); }
+  .key-display {
+    font-family: monospace; background: #0f1115; padding: 10px 12px; border-radius: 6px;
+    font-size: 12px; word-break: break-all; margin-top: 10px; border: 1px solid var(--accent);
+  }
+  .msg { font-size: 13px; margin-top: 8px; }
+  .msg.err { color: var(--danger); }
+  .msg.ok { color: var(--ok); }
+  .hint { font-size: 12px; color: var(--muted); margin-top: -4px; margin-bottom: 12px; line-height: 1.5; }
+  #logout { position: fixed; top: 16px; right: 16px; }
+</style>
+</head>
+<body>
+
+<div id="gate" class="gate">
+  <h1>Vault Dashboard</h1>
+  <p class="sub">Enter your admin token to continue</p>
+  <input id="tokenInput" type="password" placeholder="Admin token" />
+  <button style="width:100%; margin-top:8px;" onclick="unlock()">Unlock</button>
+  <p id="gateMsg" class="msg err"></p>
+</div>
+
+<div id="app" class="wrap" style="display:none;">
+  <button id="logout" class="ghost" onclick="logout()">Log out</button>
+  <h1>Vault Dashboard</h1>
+  <p class="sub">Manage TeraBox accounts and API keys for your apps</p>
+
+  <div class="card">
+    <h2>Add / Update Account</h2>
+    <p class="hint">Log into terabox.com in a browser → DevTools → Application → Cookies → copy the <b>ndus</b> value.</p>
+    <input id="accLabel" placeholder="Label (e.g. main, backup, acc3)" />
+    <input id="accNdus" placeholder="ndus cookie value" type="password" />
+    <button onclick="addAccount()">Save Account</button>
+    <p id="accMsg" class="msg"></p>
+  </div>
+
+  <div class="card">
+    <h2>Accounts</h2>
+    <table id="accountsTable">
+      <thead><tr><th>Label</th><th>Updated</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <p id="accountsEmpty" class="empty" style="display:none;">No accounts yet — add one above.</p>
+  </div>
+
+  <div class="card">
+    <h2>Issue API Key</h2>
+    <input id="keyName" placeholder="App name (e.g. my-android-app)" />
+    <select id="keyAccount"></select>
+    <button onclick="issueKey()">Generate Key</button>
+    <div id="keyResult"></div>
+  </div>
+
+  <div class="card">
+    <h2>API Keys</h2>
+    <table id="keysTable">
+      <thead><tr><th>Name</th><th>Account</th><th>Status</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <p id="keysEmpty" class="empty" style="display:none;">No keys issued yet.</p>
+  </div>
+
+  <div class="card">
+    <h2>API Base URL</h2>
+    <p class="hint">Use this from your apps with header <code>X-Api-Key: your_key</code></p>
+    <div class="key-display" id="baseUrl"></div>
+  </div>
+</div>
+
+<script>
+let TOKEN = sessionStorage.getItem('adminToken') || '';
+
+function api(path, opts = {}) {
+  return fetch(path, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Admin-Token': TOKEN,
+      ...(opts.headers || {}),
+    },
+  }).then(async (r) => {
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || 'Request failed');
+    return data;
+  });
+}
+
+async function unlock() {
+  const val = document.getElementById('tokenInput').value.trim();
+  if (!val) return;
+  TOKEN = val;
+  try {
+    await api('/admin/accounts');
+    sessionStorage.setItem('adminToken', TOKEN);
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('baseUrl').textContent = window.location.origin;
+    loadAll();
+  } catch (e) {
+    document.getElementById('gateMsg').textContent = 'Invalid token';
+  }
+}
+
+function logout() {
+  sessionStorage.removeItem('adminToken');
+  location.reload();
+}
+
+async function loadAll() {
+  await Promise.all([loadAccounts(), loadKeys()]);
+}
+
+async function loadAccounts() {
+  const rows = await api('/admin/accounts');
+  const tbody = document.querySelector('#accountsTable tbody');
+  const empty = document.getElementById('accountsEmpty');
+  const select = document.getElementById('keyAccount');
+  tbody.innerHTML = '';
+  select.innerHTML = '';
+  empty.style.display = rows.length ? 'none' : 'block';
+
+  rows.forEach((r) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r.label}</td>
+      <td>${new Date(r.updated_at).toLocaleString()}</td>
+      <td><button class="danger" style="padding:4px 10px;font-size:12px;" onclick="deleteAccount('${r.label}')">Delete</button></td>
+    `;
+    tbody.appendChild(tr);
+
+    const opt = document.createElement('option');
+    opt.value = r.label;
+    opt.textContent = r.label;
+    select.appendChild(opt);
+  });
+}
+
+async function addAccount() {
+  const label = document.getElementById('accLabel').value.trim();
+  const ndus = document.getElementById('accNdus').value.trim();
+  const msg = document.getElementById('accMsg');
+  if (!label || !ndus) { msg.className = 'msg err'; msg.textContent = 'Both fields required'; return; }
+  try {
+    await api('/admin/accounts', { method: 'POST', body: JSON.stringify({ label, ndus }) });
+    msg.className = 'msg ok';
+    msg.textContent = `Saved "${label}"`;
+    document.getElementById('accLabel').value = '';
+    document.getElementById('accNdus').value = '';
+    loadAccounts();
+  } catch (e) {
+    msg.className = 'msg err';
+    msg.textContent = e.message;
+  }
+}
+
+async function deleteAccount(label) {
+  if (!confirm(`Delete account "${label}"? Keys tied to it will stop working.`)) return;
+  await api('/admin/accounts/' + encodeURIComponent(label), { method: 'DELETE' });
+  loadAccounts();
+}
+
+async function loadKeys() {
+  const rows = await api('/admin/keys');
+  const tbody = document.querySelector('#keysTable tbody');
+  const empty = document.getElementById('keysEmpty');
+  tbody.innerHTML = '';
+  empty.style.display = rows.length ? 'none' : 'block';
+
+  rows.forEach((r) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r.name}</td>
+      <td>${r.account_label}</td>
+      <td><span class="pill ${r.revoked ? 'revoked' : 'ok'}">${r.revoked ? 'revoked' : 'active'}</span></td>
+      <td>${r.revoked ? '' : `<button class="danger" style="padding:4px 10px;font-size:12px;" onclick="revokeKey(${r.id})">Revoke</button>`}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function issueKey() {
+  const name = document.getElementById('keyName').value.trim();
+  const account_label = document.getElementById('keyAccount').value;
+  const result = document.getElementById('keyResult');
+  if (!name || !account_label) { result.innerHTML = '<p class="msg err">Name and account required</p>'; return; }
+  try {
+    const data = await api('/admin/keys', { method: 'POST', body: JSON.stringify({ name, account_label }) });
+    result.innerHTML = `<div class="key-display">${data.key}</div><p class="hint">Copy this now — it won't be shown again in full.</p>`;
+    document.getElementById('keyName').value = '';
+    loadKeys();
+  } catch (e) {
+    result.innerHTML = `<p class="msg err">${e.message}</p>`;
+  }
+}
+
+async function revokeKey(id) {
+  if (!confirm('Revoke this key? Any app using it will stop working immediately.')) return;
+  await api(`/admin/keys/${id}/revoke`, { method: 'POST' });
+  loadKeys();
+}
+
+if (TOKEN) {
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('baseUrl').textContent = window.location.origin;
+  loadAll().catch(() => { logout(); });
+}
+</script>
+</body>
+</html>
