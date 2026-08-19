@@ -3,153 +3,271 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Vault Dashboard</title>
+<title>Vault — Connect TeraBox to your apps</title>
 <style>
   :root {
-    --bg: #0f1115;
-    --panel: #171a21;
-    --border: #262b36;
-    --text: #e8eaed;
-    --muted: #8a8f9a;
-    --accent: #4f8cff;
-    --danger: #ff5c5c;
-    --ok: #3ddc84;
+    --bg: #0b0d12;
+    --bg-soft: #10131a;
+    --panel: #151922;
+    --panel-2: #1b202b;
+    --border: #262c3a;
+    --text: #eef0f4;
+    --muted: #8b93a3;
+    --accent: #5b8cff;
+    --accent-2: #8b5bff;
+    --danger: #ff5c6c;
+    --ok: #35d68a;
+    --radius: 14px;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    background: var(--bg);
+    background:
+      radial-gradient(1200px 600px at 10% -10%, rgba(91,140,255,0.12), transparent 60%),
+      radial-gradient(1000px 500px at 100% 0%, rgba(139,91,255,0.10), transparent 55%),
+      var(--bg);
     color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    padding: 32px 16px 80px;
+    min-height: 100vh;
   }
-  .wrap { max-width: 760px; margin: 0 auto; }
-  h1 { font-size: 20px; margin-bottom: 4px; }
-  .sub { color: var(--muted); font-size: 13px; margin-bottom: 28px; }
-  .gate {
-    max-width: 360px; margin: 80px auto; text-align: center;
+
+  .gate-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; position: relative; overflow: hidden; }
+  .gate-screen::before {
+    content: ""; position: absolute; inset: 0;
+    background:
+      radial-gradient(800px 400px at 20% 20%, rgba(91,140,255,0.18), transparent 60%),
+      radial-gradient(700px 400px at 85% 80%, rgba(139,91,255,0.16), transparent 60%);
+    pointer-events: none;
   }
-  .gate input {
-    width: 100%; margin-top: 16px;
-  }
-  .card {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 20px;
-    margin-bottom: 20px;
-  }
-  .card h2 { font-size: 14px; margin: 0 0 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .gate-card { max-width: 420px; width: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 40px 34px; text-align: center; position: relative; z-index: 1; box-shadow: 0 20px 60px rgba(0,0,0,0.4); }
+  .logo-mark { width: 52px; height: 52px; margin: 0 auto 18px; border-radius: 14px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); display: flex; align-items: center; justify-content: center; font-size: 24px; box-shadow: 0 8px 24px rgba(91,140,255,0.35); }
+  .gate-card h1 { font-size: 24px; margin: 0 0 6px; letter-spacing: -0.02em; }
+  .gate-card p.sub { color: var(--muted); font-size: 14px; margin: 0 0 24px; line-height: 1.5; }
+
+  .auth-toggle { display: flex; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 10px; padding: 4px; margin-bottom: 24px; }
+  .auth-toggle button { flex: 1; width: auto; background: transparent; color: var(--muted); font-size: 13.5px; padding: 9px; border-radius: 7px; box-shadow: none; }
+  .auth-toggle button.active { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: white; }
+  .auth-toggle button:hover { filter: none; }
+  .auth-toggle button.active:hover { filter: brightness(1.08); }
+
   input, select {
-    background: #0f1115;
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 10px 12px;
-    border-radius: 6px;
-    font-size: 14px;
-    width: 100%;
-    margin-bottom: 10px;
+    background: var(--bg-soft); border: 1px solid var(--border); color: var(--text);
+    padding: 12px 14px; border-radius: 9px; font-size: 14px; width: 100%; margin-bottom: 12px;
+    transition: border-color 0.15s;
   }
-  button {
-    background: var(--accent);
-    color: white;
-    border: none;
-    padding: 10px 16px;
-    border-radius: 6px;
-    font-size: 14px;
-    cursor: pointer;
-    font-weight: 500;
-  }
-  button:hover { opacity: 0.9; }
-  button.danger { background: var(--danger); }
-  button.ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); }
-  .row { display: flex; gap: 8px; align-items: center; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
-  th { color: var(--muted); font-weight: 500; }
-  .empty { color: var(--muted); font-size: 13px; padding: 12px 0; }
-  .pill { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; }
-  .pill.ok { background: rgba(61,220,132,0.15); color: var(--ok); }
-  .pill.revoked { background: rgba(255,92,92,0.15); color: var(--danger); }
-  .key-display {
-    font-family: monospace; background: #0f1115; padding: 10px 12px; border-radius: 6px;
-    font-size: 12px; word-break: break-all; margin-top: 10px; border: 1px solid var(--accent);
-  }
-  .msg { font-size: 13px; margin-top: 8px; }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  label { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 6px; font-weight: 500; }
+  .field { text-align: left; margin-bottom: 4px; }
+
+  button { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: white; border: none; padding: 12px 20px; border-radius: 9px; font-size: 14px; font-weight: 600; cursor: pointer; width: 100%; }
+  button:hover { filter: brightness(1.08); }
+  button.secondary { background: var(--panel-2); border: 1px solid var(--border); width: auto; padding: 8px 14px; font-size: 13px; font-weight: 500; }
+  button.danger-outline { background: transparent; border: 1px solid rgba(255,92,108,0.4); color: var(--danger); width: auto; padding: 6px 12px; font-size: 12px; font-weight: 500; }
+  button.small { width: auto; padding: 8px 16px; }
+
+  .msg { font-size: 13px; margin-top: 10px; min-height: 18px; }
   .msg.err { color: var(--danger); }
   .msg.ok { color: var(--ok); }
-  .hint { font-size: 12px; color: var(--muted); margin-top: -4px; margin-bottom: 12px; line-height: 1.5; }
-  #logout { position: fixed; top: 16px; right: 16px; }
+
+  #app { display: none; }
+  .topbar { border-bottom: 1px solid var(--border); padding: 14px 28px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; background: rgba(11,13,18,0.9); backdrop-filter: blur(8px); z-index: 10; }
+  .topbar .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; }
+  .topbar .brand .logo-mark { width: 30px; height: 30px; margin: 0; font-size: 14px; border-radius: 8px; }
+
+  .tabs { display: flex; gap: 4px; padding: 0 28px; border-bottom: 1px solid var(--border); overflow-x: auto; background: var(--bg); }
+  .tab { padding: 14px 16px; font-size: 13.5px; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; font-weight: 500; }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .tab:hover { color: var(--text); }
+
+  .content { max-width: 920px; margin: 0 auto; padding: 28px 28px 100px; display: none; }
+  .content.active { display: grid; gap: 22px; }
+
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; }
+  .card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+  .card-head .icon { width: 34px; height: 34px; border-radius: 9px; background: var(--panel-2); display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+  .card-head h2 { font-size: 15.5px; margin: 0; }
+  .card-head p { font-size: 12.5px; color: var(--muted); margin: 2px 0 0; }
+
+  .hint { font-size: 12.5px; color: var(--muted); background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; line-height: 1.6; }
+  .hint code { color: var(--accent); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+  tr:last-child td { border-bottom: none; }
+  .empty { color: var(--muted); font-size: 13.5px; padding: 18px 0; text-align: center; }
+
+  .pill { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .pill.ok { background: rgba(53,214,138,0.15); color: var(--ok); }
+  .pill.revoked { background: rgba(255,92,108,0.15); color: var(--danger); }
+  .pill.neutral { background: var(--panel-2); color: var(--muted); }
+
+  .key-display { font-family: "SF Mono", Consolas, monospace; background: var(--bg-soft); padding: 14px 16px; border-radius: 9px; font-size: 12.5px; word-break: break-all; margin-top: 12px; border: 1px solid var(--accent); }
+  .base-url-box { display: flex; align-items: center; gap: 10px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 9px; padding: 14px 16px; font-family: "SF Mono", Consolas, monospace; font-size: 13px; }
+
+  .steps-mini { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 22px; }
+  .step-mini { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+  .step-mini .n { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: white; font-size: 11px; font-weight: 700; margin-bottom: 8px; }
+  .step-mini p { font-size: 12.5px; color: var(--muted); margin: 0; line-height: 1.5; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .stat-box { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 18px; text-align: center; }
+  .stat-box .num { font-size: 26px; font-weight: 700; background: linear-gradient(135deg, #fff, #b9c2d6); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .stat-box .label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  @media (max-width: 640px) {
+    .steps-mini { grid-template-columns: 1fr; }
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    .tabs { padding: 0 12px; }
+    .content { padding: 20px 14px 80px; }
+  }
 </style>
 </head>
 <body>
 
-<div id="gate" class="gate">
-  <h1>Vault Dashboard</h1>
-  <p class="sub">Enter your admin token to continue</p>
-  <input id="tokenInput" type="password" placeholder="Admin token" />
-  <button style="width:100%; margin-top:8px;" onclick="unlock()">Unlock</button>
-  <p id="gateMsg" class="msg err"></p>
+<div id="gate" class="gate-screen">
+  <div class="gate-card">
+    <div class="logo-mark">🔐</div>
+    <h1 id="gateTitle">Welcome back</h1>
+    <p class="sub" id="gateSub">Log in to manage your TeraBox keys</p>
+
+    <div class="auth-toggle">
+      <button id="toggleLogin" class="active" onclick="switchAuthMode('login')">Log In</button>
+      <button id="toggleSignup" onclick="switchAuthMode('signup')">Create Account</button>
+    </div>
+
+    <!-- Login form -->
+    <div id="loginForm">
+      <div class="field"><input id="loginEmail" type="email" placeholder="Email" onkeydown="if(event.key==='Enter')document.getElementById('loginPassword').focus()" /></div>
+      <div class="field"><input id="loginPassword" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')login()" /></div>
+      <button onclick="login()">Log In</button>
+    </div>
+
+    <!-- Signup form -->
+    <div id="signupForm" style="display:none;">
+      <div class="field"><input id="signupEmail" type="email" placeholder="Email" /></div>
+      <div class="field"><input id="signupPassword" type="password" placeholder="Password (min 6 characters)" /></div>
+      <div class="field"><input id="signupPassword2" type="password" placeholder="Confirm password" onkeydown="if(event.key==='Enter')signup()" /></div>
+      <button onclick="signup()">Create Account</button>
+    </div>
+
+    <p id="gateMsg" class="msg err"></p>
+  </div>
 </div>
 
-<div id="app" class="wrap" style="display:none;">
-  <button id="logout" class="ghost" onclick="logout()">Log out</button>
-  <h1>Vault Dashboard</h1>
-  <p class="sub">Manage TeraBox accounts and API keys for your apps</p>
-
-  <div class="card">
-    <h2>Add / Update Account</h2>
-    <p class="hint">Log into terabox.com in a browser → DevTools → Application → Cookies → copy the <b>ndus</b> value.</p>
-    <input id="accLabel" placeholder="Label (e.g. main, backup, acc3)" />
-    <input id="accNdus" placeholder="ndus cookie value" type="password" />
-    <button onclick="addAccount()">Save Account</button>
-    <p id="accMsg" class="msg"></p>
+<div id="app">
+  <div class="topbar">
+    <div class="brand"><div class="logo-mark">🔐</div> TeraBox Vault</div>
+    <button class="secondary" onclick="logout()">Log out</button>
   </div>
 
-  <div class="card">
-    <h2>Accounts</h2>
-    <table id="accountsTable">
-      <thead><tr><th>Label</th><th>Updated</th><th></th></tr></thead>
-      <tbody></tbody>
-    </table>
-    <p id="accountsEmpty" class="empty" style="display:none;">No accounts yet — add one above.</p>
+  <div class="tabs">
+    <div class="tab active" data-tab="keys" onclick="showTab('keys')">Keys</div>
+    <div class="tab" data-tab="projects" onclick="showTab('projects')">Projects</div>
+    <div class="tab" data-tab="accounts" onclick="showTab('accounts')">TeraBox Accounts</div>
+    <div class="tab" data-tab="stats" onclick="showTab('stats')">Stats</div>
+    <div class="tab" data-tab="revoked" onclick="showTab('revoked')">Revoked Keys</div>
+    <div class="tab" data-tab="settings" onclick="showTab('settings')">Settings</div>
   </div>
 
-  <div class="card">
-    <h2>Issue API Key</h2>
-    <input id="keyName" placeholder="App name (e.g. my-android-app)" />
-    <select id="keyAccount"></select>
-    <button onclick="issueKey()">Generate Key</button>
-    <div id="keyResult"></div>
+  <div class="content active" id="tab-keys">
+    <div class="card">
+      <div class="card-head"><div class="icon">🔑</div><div><h2>Create a new key</h2><p>Generate an API key for one of your apps</p></div></div>
+      <div class="field"><label>App name</label><input id="keyName" placeholder="e.g. my-android-app" /></div>
+      <div class="field"><label>Project (optional)</label><select id="keyProject"><option value="">— No project —</option></select></div>
+      <div class="field"><label>TeraBox account</label><select id="keyAccount"></select></div>
+      <button onclick="issueKey()">Generate API Key</button>
+      <div id="keyResult"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><div class="icon">🗝️</div><div><h2>Active keys</h2><p>Keys currently in use by your apps</p></div></div>
+      <table id="keysTable"><thead><tr><th>App</th><th>Project</th><th>Account</th><th></th></tr></thead><tbody></tbody></table>
+      <p id="keysEmpty" class="empty" style="display:none;">No active keys yet — create one above.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><div class="icon">🌐</div><div><h2>Your API endpoint</h2><p>Point your apps here with header <code>X-Api-Key: your_key</code></p></div></div>
+      <div class="base-url-box"><span id="baseUrl">—</span><button class="secondary small" onclick="copyBaseUrl()">Copy</button></div>
+    </div>
   </div>
 
-  <div class="card">
-    <h2>API Keys</h2>
-    <table id="keysTable">
-      <thead><tr><th>Name</th><th>Account</th><th>Status</th><th></th></tr></thead>
-      <tbody></tbody>
-    </table>
-    <p id="keysEmpty" class="empty" style="display:none;">No keys issued yet.</p>
+  <div class="content" id="tab-projects">
+    <div class="card">
+      <div class="card-head"><div class="icon">📁</div><div><h2>New project</h2><p>Group keys by the app or project they belong to</p></div></div>
+      <div class="field"><label>Project name</label><input id="projectName" placeholder="e.g. My Android App" /></div>
+      <button onclick="addProject()">Create Project</button>
+      <p id="projectMsg" class="msg"></p>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="icon">📂</div><div><h2>Your projects</h2><p>Each project's key counts</p></div></div>
+      <table id="projectsTable"><thead><tr><th>Project</th><th>Active keys</th><th>Revoked</th><th></th></tr></thead><tbody></tbody></table>
+      <p id="projectsEmpty" class="empty" style="display:none;">No projects yet — create one above.</p>
+    </div>
   </div>
 
-  <div class="card">
-    <h2>API Base URL</h2>
-    <p class="hint">Use this from your apps with header <code>X-Api-Key: your_key</code></p>
-    <div class="key-display" id="baseUrl"></div>
+  <div class="content" id="tab-accounts">
+    <div class="card">
+      <div class="card-head"><div class="icon">🔗</div><div><h2>Connect a TeraBox account</h2><p>Give it a name, then paste your session cookie</p></div></div>
+      <div class="steps-mini">
+        <div class="step-mini"><span class="n">1</span><p>Log into <b>terabox.com</b> in your browser</p></div>
+        <div class="step-mini"><span class="n">2</span><p>DevTools → Application → Cookies → find <code>ndus</code></p></div>
+        <div class="step-mini"><span class="n">3</span><p>Copy its value and paste it below</p></div>
+      </div>
+      <div class="field"><label>Account label</label><input id="accLabel" placeholder="e.g. main, backup" /></div>
+      <div class="field"><label>TeraBox email <span style="font-weight:400;">(reference only)</span></label><input id="accEmail" placeholder="you@example.com" type="email" /></div>
+      <div class="field"><label>Session cookie (ndus)</label><input id="accNdus" placeholder="Paste the ndus cookie value" type="password" /></div>
+      <button onclick="addAccount()">Connect Account</button>
+      <p id="accMsg" class="msg"></p>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="icon">📦</div><div><h2>Connected accounts</h2><p>Every TeraBox account linked to this vault</p></div></div>
+      <table id="accountsTable"><thead><tr><th>Label</th><th>Email</th><th>Connected</th><th></th></tr></thead><tbody></tbody></table>
+      <p id="accountsEmpty" class="empty" style="display:none;">Nothing connected yet.</p>
+    </div>
+  </div>
+
+  <div class="content" id="tab-stats">
+    <div class="card">
+      <div class="card-head"><div class="icon">📊</div><div><h2>Overview</h2><p>Snapshot of your vault</p></div></div>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="num" id="statAccounts">–</div><div class="label">TeraBox accounts</div></div>
+        <div class="stat-box"><div class="num" id="statProjects">–</div><div class="label">Projects</div></div>
+        <div class="stat-box"><div class="num" id="statActive">–</div><div class="label">Active keys</div></div>
+        <div class="stat-box"><div class="num" id="statRevoked">–</div><div class="label">Revoked keys</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="content" id="tab-revoked">
+    <div class="card">
+      <div class="card-head"><div class="icon">🚫</div><div><h2>Revoked keys</h2><p>Keys that no longer work — kept here for your records</p></div></div>
+      <table id="revokedTable"><thead><tr><th>App</th><th>Project</th><th>Account</th><th></th></tr></thead><tbody></tbody></table>
+      <p id="revokedEmpty" class="empty" style="display:none;">No revoked keys.</p>
+    </div>
+  </div>
+
+  <div class="content" id="tab-settings">
+    <div class="card">
+      <div class="card-head"><div class="icon">⚙️</div><div><h2>Change your login</h2><p>Update the email/password you use to open this dashboard</p></div></div>
+      <div class="field"><label>Current password</label><input id="curPassword" type="password" placeholder="Required to confirm changes" /></div>
+      <div class="field"><label>New email <span style="font-weight:400;">(leave blank to keep current)</span></label><input id="newEmail" type="email" placeholder="new@example.com" /></div>
+      <div class="field"><label>New password <span style="font-weight:400;">(leave blank to keep current)</span></label><input id="newPassword" type="password" placeholder="New password" /></div>
+      <button onclick="updateSettings()">Save Changes</button>
+      <p id="settingsMsg" class="msg"></p>
+    </div>
   </div>
 </div>
 
 <script>
 let TOKEN = sessionStorage.getItem('adminToken') || '';
+let allKeys = [];
+let allProjects = [];
 
 function api(path, opts = {}) {
   return fetch(path, {
     ...opts,
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Admin-Token': TOKEN,
-      ...(opts.headers || {}),
-    },
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Token': TOKEN, ...(opts.headers || {}) },
   }).then(async (r) => {
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data.error || 'Request failed');
@@ -157,29 +275,73 @@ function api(path, opts = {}) {
   });
 }
 
-async function unlock() {
-  const val = document.getElementById('tokenInput').value.trim();
-  if (!val) return;
-  TOKEN = val;
-  try {
-    await api('/admin/accounts');
-    sessionStorage.setItem('adminToken', TOKEN);
-    document.getElementById('gate').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-    document.getElementById('baseUrl').textContent = window.location.origin;
-    loadAll();
-  } catch (e) {
-    document.getElementById('gateMsg').textContent = 'Invalid token';
-  }
+function switchAuthMode(mode) {
+  document.getElementById('gateMsg').textContent = '';
+  const isLogin = mode === 'login';
+  document.getElementById('toggleLogin').classList.toggle('active', isLogin);
+  document.getElementById('toggleSignup').classList.toggle('active', !isLogin);
+  document.getElementById('loginForm').style.display = isLogin ? 'block' : 'none';
+  document.getElementById('signupForm').style.display = isLogin ? 'none' : 'block';
+  document.getElementById('gateTitle').textContent = isLogin ? 'Welcome back' : 'Create your vault';
+  document.getElementById('gateSub').textContent = isLogin ? 'Log in to manage your TeraBox keys' : 'Set an email and password for this dashboard';
 }
 
-function logout() {
-  sessionStorage.removeItem('adminToken');
-  location.reload();
+async function signup() {
+  const email = document.getElementById('signupEmail').value.trim();
+  const password = document.getElementById('signupPassword').value;
+  const password2 = document.getElementById('signupPassword2').value;
+  const msg = document.getElementById('gateMsg');
+  if (!email || !password) { msg.textContent = 'Enter an email and password'; return; }
+  if (password.length < 6) { msg.textContent = 'Password must be at least 6 characters'; return; }
+  if (password !== password2) { msg.textContent = 'Passwords don\'t match'; return; }
+  try {
+    const res = await fetch('/admin/signup', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Signup failed');
+    TOKEN = data.token;
+    sessionStorage.setItem('adminToken', TOKEN);
+    enterApp();
+  } catch (e) { msg.textContent = e.message; }
+}
+
+async function login() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const msg = document.getElementById('gateMsg');
+  if (!email || !password) { msg.textContent = 'Enter your email and password'; return; }
+  try {
+    const res = await fetch('/admin/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Login failed');
+    TOKEN = data.token;
+    sessionStorage.setItem('adminToken', TOKEN);
+    enterApp();
+  } catch (e) { msg.textContent = 'Incorrect email or password'; }
+}
+
+function enterApp() {
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('baseUrl').textContent = window.location.origin;
+  loadAll();
+}
+
+function logout() { sessionStorage.removeItem('adminToken'); location.reload(); }
+function copyBaseUrl() { navigator.clipboard.writeText(window.location.origin); }
+
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + name));
 }
 
 async function loadAll() {
-  await Promise.all([loadAccounts(), loadKeys()]);
+  await Promise.all([loadAccounts(), loadProjects(), loadKeys(), loadStats()]);
 }
 
 async function loadAccounts() {
@@ -187,95 +349,153 @@ async function loadAccounts() {
   const tbody = document.querySelector('#accountsTable tbody');
   const empty = document.getElementById('accountsEmpty');
   const select = document.getElementById('keyAccount');
-  tbody.innerHTML = '';
-  select.innerHTML = '';
+  tbody.innerHTML = ''; select.innerHTML = '';
   empty.style.display = rows.length ? 'none' : 'block';
-
   rows.forEach((r) => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${r.label}</td>
-      <td>${new Date(r.updated_at).toLocaleString()}</td>
-      <td><button class="danger" style="padding:4px 10px;font-size:12px;" onclick="deleteAccount('${r.label}')">Delete</button></td>
-    `;
+    tr.innerHTML = `<td>${r.label}</td><td>${r.email || '—'}</td><td>${new Date(r.updated_at).toLocaleDateString()}</td><td><button class="danger-outline" onclick="deleteAccount('${r.label}')">Remove</button></td>`;
     tbody.appendChild(tr);
-
     const opt = document.createElement('option');
-    opt.value = r.label;
-    opt.textContent = r.label;
+    opt.value = r.label; opt.textContent = r.email ? `${r.label} (${r.email})` : r.label;
     select.appendChild(opt);
   });
 }
 
 async function addAccount() {
   const label = document.getElementById('accLabel').value.trim();
+  const email = document.getElementById('accEmail').value.trim();
   const ndus = document.getElementById('accNdus').value.trim();
   const msg = document.getElementById('accMsg');
-  if (!label || !ndus) { msg.className = 'msg err'; msg.textContent = 'Both fields required'; return; }
+  if (!label || !ndus) { msg.className = 'msg err'; msg.textContent = 'Label and session cookie are required'; return; }
   try {
-    await api('/admin/accounts', { method: 'POST', body: JSON.stringify({ label, ndus }) });
-    msg.className = 'msg ok';
-    msg.textContent = `Saved "${label}"`;
-    document.getElementById('accLabel').value = '';
-    document.getElementById('accNdus').value = '';
-    loadAccounts();
-  } catch (e) {
-    msg.className = 'msg err';
-    msg.textContent = e.message;
-  }
+    await api('/admin/accounts', { method: 'POST', body: JSON.stringify({ label, email, ndus }) });
+    msg.className = 'msg ok'; msg.textContent = `Connected "${label}"`;
+    document.getElementById('accLabel').value = ''; document.getElementById('accEmail').value = ''; document.getElementById('accNdus').value = '';
+    loadAccounts(); loadStats();
+  } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
 }
 
 async function deleteAccount(label) {
-  if (!confirm(`Delete account "${label}"? Keys tied to it will stop working.`)) return;
+  if (!confirm(`Remove account "${label}"? Any API keys tied to it will stop working.`)) return;
   await api('/admin/accounts/' + encodeURIComponent(label), { method: 'DELETE' });
-  loadAccounts();
+  loadAccounts(); loadStats();
 }
 
-async function loadKeys() {
-  const rows = await api('/admin/keys');
-  const tbody = document.querySelector('#keysTable tbody');
-  const empty = document.getElementById('keysEmpty');
-  tbody.innerHTML = '';
-  empty.style.display = rows.length ? 'none' : 'block';
-
-  rows.forEach((r) => {
+async function loadProjects() {
+  allProjects = await api('/admin/projects');
+  const tbody = document.querySelector('#projectsTable tbody');
+  const empty = document.getElementById('projectsEmpty');
+  const select = document.getElementById('keyProject');
+  tbody.innerHTML = ''; select.innerHTML = '<option value="">— No project —</option>';
+  empty.style.display = allProjects.length ? 'none' : 'block';
+  allProjects.forEach((p) => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${r.name}</td>
-      <td>${r.account_label}</td>
-      <td><span class="pill ${r.revoked ? 'revoked' : 'ok'}">${r.revoked ? 'revoked' : 'active'}</span></td>
-      <td>${r.revoked ? '' : `<button class="danger" style="padding:4px 10px;font-size:12px;" onclick="revokeKey(${r.id})">Revoke</button>`}</td>
-    `;
+    tr.innerHTML = `<td>${p.name}</td><td>${p.active_keys}</td><td>${p.revoked_keys}</td><td><button class="danger-outline" onclick="deleteProject(${p.id})">Delete</button></td>`;
     tbody.appendChild(tr);
+    const opt = document.createElement('option');
+    opt.value = p.id; opt.textContent = p.name;
+    select.appendChild(opt);
+  });
+}
+
+async function addProject() {
+  const name = document.getElementById('projectName').value.trim();
+  const msg = document.getElementById('projectMsg');
+  if (!name) { msg.className = 'msg err'; msg.textContent = 'Project name required'; return; }
+  try {
+    await api('/admin/projects', { method: 'POST', body: JSON.stringify({ name }) });
+    msg.className = 'msg ok'; msg.textContent = `Created "${name}"`;
+    document.getElementById('projectName').value = '';
+    loadProjects(); loadStats();
+  } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
+}
+
+async function deleteProject(id) {
+  if (!confirm('Delete this project? Its keys will remain but become unassigned.')) return;
+  await api('/admin/projects/' + id, { method: 'DELETE' });
+  loadProjects(); loadKeys(); loadStats();
+}
+
+async function loadKeys() { allKeys = await api('/admin/keys'); renderKeys(); }
+
+function renderKeys() {
+  const active = allKeys.filter(k => !k.revoked);
+  const revoked = allKeys.filter(k => k.revoked);
+
+  const activeBody = document.querySelector('#keysTable tbody');
+  const activeEmpty = document.getElementById('keysEmpty');
+  activeBody.innerHTML = '';
+  activeEmpty.style.display = active.length ? 'none' : 'block';
+  active.forEach((k) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${k.name}</td><td>${k.project_name ? `<span class="pill neutral">${k.project_name}</span>` : '—'}</td><td>${k.account_label}</td><td><button class="danger-outline" onclick="revokeKey(${k.id})">Revoke</button></td>`;
+    activeBody.appendChild(tr);
+  });
+
+  const revokedBody = document.querySelector('#revokedTable tbody');
+  const revokedEmpty = document.getElementById('revokedEmpty');
+  revokedBody.innerHTML = '';
+  revokedEmpty.style.display = revoked.length ? 'none' : 'block';
+  revoked.forEach((k) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${k.name}</td><td>${k.project_name ? `<span class="pill neutral">${k.project_name}</span>` : '—'}</td><td>${k.account_label}</td><td><span class="pill revoked">revoked</span></td>`;
+    revokedBody.appendChild(tr);
   });
 }
 
 async function issueKey() {
   const name = document.getElementById('keyName').value.trim();
   const account_label = document.getElementById('keyAccount').value;
+  const project_id = document.getElementById('keyProject').value || null;
   const result = document.getElementById('keyResult');
-  if (!name || !account_label) { result.innerHTML = '<p class="msg err">Name and account required</p>'; return; }
+  if (!name || !account_label) { result.innerHTML = '<p class="msg err">App name and account are required</p>'; return; }
   try {
-    const data = await api('/admin/keys', { method: 'POST', body: JSON.stringify({ name, account_label }) });
-    result.innerHTML = `<div class="key-display">${data.key}</div><p class="hint">Copy this now — it won't be shown again in full.</p>`;
+    const data = await api('/admin/keys', { method: 'POST', body: JSON.stringify({ name, account_label, project_id }) });
+    result.innerHTML = `<div class="key-display">${data.key}</div><p class="msg" style="color:var(--muted);">Copy this now — it won't be shown in full again.</p>`;
     document.getElementById('keyName').value = '';
-    loadKeys();
-  } catch (e) {
-    result.innerHTML = `<p class="msg err">${e.message}</p>`;
-  }
+    loadKeys(); loadProjects(); loadStats();
+  } catch (e) { result.innerHTML = `<p class="msg err">${e.message}</p>`; }
 }
 
 async function revokeKey(id) {
   if (!confirm('Revoke this key? Any app using it will stop working immediately.')) return;
   await api(`/admin/keys/${id}/revoke`, { method: 'POST' });
-  loadKeys();
+  loadKeys(); loadProjects(); loadStats();
+}
+
+async function loadStats() {
+  const s = await api('/admin/stats');
+  document.getElementById('statAccounts').textContent = s.accounts;
+  document.getElementById('statProjects').textContent = s.projects;
+  document.getElementById('statActive').textContent = s.activeKeys;
+  document.getElementById('statRevoked').textContent = s.revokedKeys;
+}
+
+async function updateSettings() {
+  const currentPassword = document.getElementById('curPassword').value;
+  const newEmail = document.getElementById('newEmail').value.trim();
+  const newPassword = document.getElementById('newPassword').value;
+  const msg = document.getElementById('settingsMsg');
+  if (!currentPassword) { msg.className = 'msg err'; msg.textContent = 'Enter your current password to confirm'; return; }
+  if (!newEmail && !newPassword) { msg.className = 'msg err'; msg.textContent = 'Enter a new email or password to change'; return; }
+  try {
+    await api('/admin/settings', { method: 'POST', body: JSON.stringify({ currentPassword, newEmail: newEmail || undefined, newPassword: newPassword || undefined }) });
+    msg.className = 'msg ok'; msg.textContent = 'Login updated. Use the new details next time you log in.';
+    document.getElementById('curPassword').value = '';
+    document.getElementById('newEmail').value = '';
+    document.getElementById('newPassword').value = '';
+  } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
 }
 
 if (TOKEN) {
-  document.getElementById('gate').style.display = 'none';
-  document.getElementById('app').style.display = 'block';
-  document.getElementById('baseUrl').textContent = window.location.origin;
-  loadAll().catch(() => { logout(); });
+  fetch('/admin/accounts', { headers: { 'X-Admin-Token': TOKEN } })
+    .then(r => { if (r.ok) enterApp(); else sessionStorage.removeItem('adminToken'); })
+    .catch(() => {});
+} else {
+  fetch('/admin/setup-status')
+    .then(r => r.json())
+    .then(data => { if (!data.hasAccount) switchAuthMode('signup'); })
+    .catch(() => {});
 }
 </script>
 </body>
