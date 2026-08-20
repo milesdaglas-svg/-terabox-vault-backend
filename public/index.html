@@ -393,12 +393,16 @@ async function addAccountAuto() {
   } catch (e) {
     msg.className = 'msg err'; msg.textContent = e.message;
     if (e.debug && e.debug.screenshot) {
+      const loginEls = (e.debug.loginLikeElements || [])
+        .map(el => `<${el.tag}${el.visible ? '' : ' (hidden)'}> "${el.text}"`)
+        .join('\n') || 'none found';
       debugBox.innerHTML = `
         <div class="hint" style="margin-top:12px;">
           <b>Debug — what TeraBox showed:</b><br/>
           URL: ${e.debug.url || '—'}<br/>
           Title: ${e.debug.title || '—'}<br/>
           <img src="data:image/jpeg;base64,${e.debug.screenshot}" style="width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border);" />
+          <details style="margin-top:8px;" open><summary style="cursor:pointer;">Elements containing "login"</summary><pre style="white-space:pre-wrap;font-size:11px;">${loginEls.replace(/</g, '&lt;')}</pre></details>
           <details style="margin-top:8px;"><summary style="cursor:pointer;">Page text</summary><pre style="white-space:pre-wrap;font-size:11px;">${(e.debug.bodyText || '').replace(/</g, '&lt;')}</pre></details>
         </div>`;
     }

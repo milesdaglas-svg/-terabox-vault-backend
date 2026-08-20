@@ -27,7 +27,20 @@ async function captureDebug(page) {
     const bodyText = await page
       .evaluate(() => document.body.innerText.slice(0, 800))
       .catch(() => '');
-    return { screenshot, url, title, bodyText };
+    const loginLikeElements = await page
+      .evaluate(() => {
+        const candidates = Array.from(document.querySelectorAll('button, a, div, span, li'));
+        return candidates
+          .filter((el) => (el.textContent || '').toLowerCase().includes('login'))
+          .slice(0, 10)
+          .map((el) => ({
+            tag: el.tagName,
+            text: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 60),
+            visible: el.offsetParent !== null,
+          }));
+      })
+      .catch(() => []);
+    return { screenshot, url, title, bodyText, loginLikeElements };
   } catch {
     return null;
   }
@@ -55,22 +68,26 @@ async function autoLogin(email, password) {
     // can vary, so try a few common patterns before giving up.
     // Find the actual "Login" button by its visible text, rather than
     // guessing class names/selectors that don't match TeraBox's real markup.
+    // Poll for a few seconds in case the button hasn't rendered yet.
     let opened = false;
-    const loginHandle = await page.evaluateHandle(() => {
-      const candidates = Array.from(document.querySelectorAll('button, a, div, span'));
-      return candidates.find(
-        (el) =>
-          el.textContent &&
-          el.textContent.trim().toLowerCase() === 'login' &&
-          el.offsetParent !== null // only visible elements
-      );
-    });
-    const loginEl = loginHandle.asElement();
-    if (loginEl) {
-      await loginEl.click().catch(() => {});
-      opened = true;
+    for (let attempt = 0; attempt < 16 && !opened; attempt++) {
+      const loginHandle = await page.evaluateHandle(() => {
+        const candidates = Array.from(document.querySelectorAll('button, a, div, span, li'));
+        return candidates.find((el) => {
+          const text = (el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+          return text === 'login' && el.offsetParent !== null;
+        });
+      });
+      const loginEl = loginHandle.asElement();
+      if (loginEl) {
+        await loginEl.click().catch(() => {});
+        opened = true;
+        await loginHandle.dispose();
+        break;
+      }
+      await loginHandle.dispose();
+      await new Promise((r) => setTimeout(r, 500));
     }
-    await loginHandle.dispose();
 
     // Give the modal / redirect time to render
     await new Promise((r) => setTimeout(r, 2000));
