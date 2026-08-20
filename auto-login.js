@@ -47,7 +47,9 @@ async function autoLogin(email, password) {
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
     );
 
-    await page.goto('https://www.terabox.com/', { waitUntil: 'networkidle2', timeout: 30000 });
+    await page.goto('https://www.terabox.com/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    // Give client-side rendering a moment to finish painting the nav bar
+    await new Promise((r) => setTimeout(r, 2500));
 
     // Try to open the login modal — TeraBox's "Login" button text/markup
     // can vary, so try a few common patterns before giving up.
@@ -95,11 +97,11 @@ async function autoLogin(email, password) {
     if (submitBtn) {
       await Promise.all([
         submitBtn.click(),
-        page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => null),
+        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => null),
       ]);
     } else {
       await page.keyboard.press('Enter');
-      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => null);
+      await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => null);
     }
 
     await new Promise((r) => setTimeout(r, 1500));
