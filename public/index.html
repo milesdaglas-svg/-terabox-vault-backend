@@ -214,6 +214,7 @@
       <div class="field"><label>TeraBox password</label><input id="accPassword" placeholder="Your TeraBox password" type="password" /></div>
       <button onclick="addAccountAuto()">Connect Automatically</button>
       <p id="accMsg" class="msg"></p>
+      <div id="accDebug"></div>
       <p class="hint" style="margin-top:14px;">If this fails (TeraBox showed a captcha or verification step), use manual connect below instead.</p>
     </div>
 
@@ -280,7 +281,11 @@ function api(path, opts = {}) {
     headers: { 'Content-Type': 'application/json', 'X-Admin-Token': TOKEN, ...(opts.headers || {}) },
   }).then(async (r) => {
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.error || 'Request failed');
+    if (!r.ok) {
+      const err = new Error(data.error || 'Request failed');
+      err.debug = data.debug;
+      throw err;
+    }
     return data;
   });
 }
@@ -376,6 +381,8 @@ async function addAccountAuto() {
   const email = document.getElementById('accEmail').value.trim();
   const password = document.getElementById('accPassword').value;
   const msg = document.getElementById('accMsg');
+  const debugBox = document.getElementById('accDebug');
+  debugBox.innerHTML = '';
   if (!label || !email || !password) { msg.className = 'msg err'; msg.textContent = 'Label, email and password are required'; return; }
   msg.className = 'msg'; msg.textContent = 'Signing in to TeraBox… this can take a few seconds';
   try {
@@ -383,7 +390,19 @@ async function addAccountAuto() {
     msg.className = 'msg ok'; msg.textContent = `Connected "${label}"`;
     document.getElementById('accLabel').value = ''; document.getElementById('accEmail').value = ''; document.getElementById('accPassword').value = '';
     loadAccounts(); loadStats();
-  } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
+  } catch (e) {
+    msg.className = 'msg err'; msg.textContent = e.message;
+    if (e.debug && e.debug.screenshot) {
+      debugBox.innerHTML = `
+        <div class="hint" style="margin-top:12px;">
+          <b>Debug — what TeraBox showed:</b><br/>
+          URL: ${e.debug.url || '—'}<br/>
+          Title: ${e.debug.title || '—'}<br/>
+          <img src="data:image/jpeg;base64,${e.debug.screenshot}" style="width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border);" />
+          <details style="margin-top:8px;"><summary style="cursor:pointer;">Page text</summary><pre style="white-space:pre-wrap;font-size:11px;">${(e.debug.bodyText || '').replace(/</g, '&lt;')}</pre></details>
+        </div>`;
+    }
+  }
 }
 
 async function addAccountManual() {

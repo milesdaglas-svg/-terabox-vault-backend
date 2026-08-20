@@ -121,7 +121,7 @@ app.post('/admin/accounts/auto', requireAdmin, async (req, res) => {
 
     res.json({ ok: true, label });
   } catch (err) {
-    res.status(502).json({ error: err.message });
+    res.status(502).json({ error: err.message, debug: err.debug || null });
   }
 });
 

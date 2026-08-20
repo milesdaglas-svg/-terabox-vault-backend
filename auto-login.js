@@ -11,9 +11,27 @@
  *    would break this until updated.
  *  - Runs a real headless browser, so it's slower and heavier than a
  *    normal HTTP request — expect a few seconds per login.
+ *
+ * When something goes wrong, this captures a screenshot + a short dump of
+ * visible page text and attaches it to the thrown error as `err.debug`, so
+ * failures are diagnosable instead of a bare timeout message.
  */
 
 const puppeteer = require('puppeteer');
+
+async function captureDebug(page) {
+  try {
+    const screenshot = await page.screenshot({ encoding: 'base64', type: 'jpeg', quality: 60 });
+    const url = page.url();
+    const title = await page.title().catch(() => '');
+    const bodyText = await page
+      .evaluate(() => document.body.innerText.slice(0, 800))
+      .catch(() => '');
+    return { screenshot, url, title, bodyText };
+  } catch {
+    return null;
+  }
+}
 
 async function autoLogin(email, password) {
   const browser = await puppeteer.launch({
@@ -21,41 +39,89 @@ async function autoLogin(email, password) {
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
 
+  let page;
   try {
-    const page = await browser.newPage();
+    page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 900 });
     await page.setUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
     );
 
     await page.goto('https://www.terabox.com/', { waitUntil: 'networkidle2', timeout: 30000 });
 
-    // Open the login modal
-    const loginBtn = await page.waitForSelector('text/Login', { timeout: 10000 }).catch(() => null);
-    if (loginBtn) await loginBtn.click();
+    // Try to open the login modal — TeraBox's "Login" button text/markup
+    // can vary, so try a few common patterns before giving up.
+    const loginTriggers = ['text/Login', 'a[href*="login"]', 'button', '.login-btn', '#login'];
+    let opened = false;
+    for (const sel of loginTriggers) {
+      const el = await page.waitForSelector(sel, { timeout: 3000 }).catch(() => null);
+      if (el) {
+        const text = await page.evaluate((e) => e.textContent, el).catch(() => '');
+        if (sel === 'button' && !/login/i.test(text || '')) continue;
+        await el.click().catch(() => {});
+        opened = true;
+        break;
+      }
+    }
 
-    // Wait for email/username field and fill the form
-    await page.waitForSelector('input[name="username"], input[type="email"]', { timeout: 15000 });
-    await page.type('input[name="username"], input[type="email"]', email, { delay: 30 });
-    await page.type('input[name="password"], input[type="password"]', password, { delay: 30 });
+    // Give the modal / redirect time to render
+    await new Promise((r) => setTimeout(r, 2000));
 
-    // Submit
-    await Promise.all([
-      page.click('button[type="submit"], .login-button'),
-      page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => null),
-    ]);
+    const emailSelectors = [
+      'input[name="username"]',
+      'input[type="email"]',
+      'input[type="text"]',
+      'input[placeholder*="mail" i]',
+      'input[placeholder*="phone" i]',
+    ].join(', ');
 
-    // Grab cookies from the page context
+    const found = await page.waitForSelector(emailSelectors, { timeout: 15000 }).catch(() => null);
+
+    if (!found) {
+      const debug = await captureDebug(page);
+      const err = new Error(
+        `Could not find the TeraBox login form (opened login trigger: ${opened}). This likely means TeraBox's page structure differs from what we expected, or a captcha/interstitial appeared. Debug info attached.`
+      );
+      err.debug = debug;
+      throw err;
+    }
+
+    await page.type(emailSelectors, email, { delay: 30 });
+    const passwordSelectors = 'input[name="password"], input[type="password"]';
+    await page.type(passwordSelectors, password, { delay: 30 });
+
+    const submitSelectors = 'button[type="submit"], .login-button, .submit-btn';
+    const submitBtn = await page.$(submitSelectors);
+    if (submitBtn) {
+      await Promise.all([
+        submitBtn.click(),
+        page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => null),
+      ]);
+    } else {
+      await page.keyboard.press('Enter');
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => null);
+    }
+
+    await new Promise((r) => setTimeout(r, 1500));
+
     const cookies = await page.cookies();
     const ndusCookie = cookies.find((c) => c.name === 'ndus');
 
     if (!ndusCookie) {
-      // Common reasons: captcha shown, wrong credentials, verification code required
-      throw new Error(
-        'Could not retrieve session automatically — TeraBox likely showed a captcha or verification step. Use the manual cookie method for this account instead.'
+      const debug = await captureDebug(page);
+      const err = new Error(
+        'Signed in but no session cookie appeared — TeraBox likely showed a captcha, verification code, or the credentials were rejected. Debug info attached; use manual connect for this account instead.'
       );
+      err.debug = debug;
+      throw err;
     }
 
     return ndusCookie.value;
+  } catch (err) {
+    if (!err.debug && page) {
+      err.debug = await captureDebug(page);
+    }
+    throw err;
   } finally {
     await browser.close();
   }
