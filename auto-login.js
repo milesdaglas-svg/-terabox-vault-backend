@@ -53,18 +53,24 @@ async function autoLogin(email, password) {
 
     // Try to open the login modal — TeraBox's "Login" button text/markup
     // can vary, so try a few common patterns before giving up.
-    const loginTriggers = ['text/Login', 'a[href*="login"]', 'button', '.login-btn', '#login'];
+    // Find the actual "Login" button by its visible text, rather than
+    // guessing class names/selectors that don't match TeraBox's real markup.
     let opened = false;
-    for (const sel of loginTriggers) {
-      const el = await page.waitForSelector(sel, { timeout: 3000 }).catch(() => null);
-      if (el) {
-        const text = await page.evaluate((e) => e.textContent, el).catch(() => '');
-        if (sel === 'button' && !/login/i.test(text || '')) continue;
-        await el.click().catch(() => {});
-        opened = true;
-        break;
-      }
+    const loginHandle = await page.evaluateHandle(() => {
+      const candidates = Array.from(document.querySelectorAll('button, a, div, span'));
+      return candidates.find(
+        (el) =>
+          el.textContent &&
+          el.textContent.trim().toLowerCase() === 'login' &&
+          el.offsetParent !== null // only visible elements
+      );
+    });
+    const loginEl = loginHandle.asElement();
+    if (loginEl) {
+      await loginEl.click().catch(() => {});
+      opened = true;
     }
+    await loginHandle.dispose();
 
     // Give the modal / redirect time to render
     await new Promise((r) => setTimeout(r, 2000));
