@@ -92,6 +92,32 @@ async function autoLogin(email, password) {
     // Give the modal / redirect time to render
     await new Promise((r) => setTimeout(r, 2000));
 
+    // TeraBox's modal shows Google/Facebook buttons plus 4 small icon
+    // options (Apple, email, phone, QR code). We need the email one —
+    // it's icon-only with no text, so find it by position among the
+    // small square icon buttons rather than by label.
+    await page.evaluate(() => {
+      const all = Array.from(document.querySelectorAll('button, div, a, span'));
+      const iconButtons = all.filter((el) => {
+        const rect = el.getBoundingClientRect();
+        const text = (el.textContent || '').trim();
+        return (
+          text === '' &&
+          rect.width > 20 &&
+          rect.width < 80 &&
+          rect.height > 20 &&
+          rect.height < 80 &&
+          el.offsetParent !== null &&
+          el.querySelector('svg, img') // icon-only buttons contain an icon
+        );
+      });
+      // Order in the screenshot is: Apple, email, phone, QR — email is index 1
+      const emailIcon = iconButtons[1] || iconButtons[0];
+      if (emailIcon) emailIcon.click();
+    });
+
+    await new Promise((r) => setTimeout(r, 1500));
+
     const emailSelectors = [
       'input[name="username"]',
       'input[type="email"]',
