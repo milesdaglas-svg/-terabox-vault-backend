@@ -80,8 +80,10 @@ curl http://localhost:3000/v1/download/FS_ID_HERE \
 
 ## Notes
 
-- `ndus` sessions expire — if calls start failing with a jsToken error,
-  re-grab the cookie and POST it to `/admin/accounts` again.
+- **Automatic connect** uses a headless browser (Puppeteer) to log into TeraBox with your email/password and grab the session cookie for you — no manual DevTools digging needed in the normal case.
+- Puppeteer bundles a real Chromium browser, which is heavier than a typical Node app. On Render's **free tier this may run out of memory** during login — if `/admin/accounts/auto` times out or the service restarts unexpectedly, that's likely why; upgrading to a paid instance (more RAM) fixes it.
+- Automatic connect **can't get past a captcha or a verification-code prompt** — if TeraBox throws one of those at login, it'll fail with an error telling you to use manual connect instead (paste the `ndus` cookie yourself from DevTools).
+- Once connected, if a session goes stale, the backend automatically re-runs the login using your saved (encrypted) password and refreshes the cookie — you shouldn't need to reconnect manually unless a captcha shows up.
 - `vault.db` (SQLite) holds encrypted credentials — it's gitignored, never
   commit it or your `.env`.
 - Revoke a key anytime: `POST /admin/keys/:id/revoke`.

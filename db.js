@@ -10,7 +10,8 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS accounts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     label TEXT UNIQUE NOT NULL,        -- e.g. "main", "backup"
-    email TEXT,                        -- optional, just for your own reference
+    email TEXT,                        -- TeraBox login email
+    password_encrypted TEXT,           -- encrypted TeraBox password, used to auto-refresh the cookie
     ndus_encrypted TEXT NOT NULL,      -- encrypted TeraBox session cookie (ndus value)
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
@@ -44,6 +45,9 @@ db.exec(`
 const accountCols = db.prepare("PRAGMA table_info(accounts)").all().map(c => c.name);
 if (!accountCols.includes('email')) {
   db.exec('ALTER TABLE accounts ADD COLUMN email TEXT');
+}
+if (!accountCols.includes('password_encrypted')) {
+  db.exec('ALTER TABLE accounts ADD COLUMN password_encrypted TEXT');
 }
 const keyCols = db.prepare("PRAGMA table_info(api_keys)").all().map(c => c.name);
 if (!keyCols.includes('project_id')) {

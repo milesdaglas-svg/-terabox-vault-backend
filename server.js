@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { encrypt, decrypt } = require('./crypto');
 const db = require('./db');
 const terabox = require('./terabox');
+const { autoLogin } = require('./auto-login');
 
 const app = express();
 app.use(express.json());
@@ -91,7 +92,26 @@ app.post('/admin/settings', requireAdmin, (req, res) => {
   res.json({ ok: true, email });
 });
 
-// ── ADMIN: store/update a TeraBox account's session cookie ────────────────
+// ── ADMIN: connect a TeraBox account automatically (email + password) ─────
+app.post('/admin/accounts/auto', requireAdmin, async (req, res) => {
+  const { label, email, password } = req.body;
+  if (!label || !email || !password) return res.status(400).json({ error: 'label, email and password required' });
+
+  try {
+    const ndus = await autoLogin(email, password);
+    db.prepare(`
+      INSERT INTO accounts (label, email, password_encrypted, ndus_encrypted) VALUES (?, ?, ?, ?)
+      ON CONFLICT(label) DO UPDATE SET email = excluded.email, password_encrypted = excluded.password_encrypted, ndus_encrypted = excluded.ndus_encrypted, updated_at = datetime('now')
+    `).run(label, email, encrypt(password), encrypt(ndus));
+
+    res.json({ ok: true, label });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// ── ADMIN: store/update a TeraBox account's session cookie manually ───────
+// Fallback for when auto-login fails (captcha, verification step, etc).
 app.post('/admin/accounts', requireAdmin, (req, res) => {
   const { label, ndus, email } = req.body;
   if (!label || !ndus) return res.status(400).json({ error: 'label and ndus required' });
@@ -182,10 +202,27 @@ app.post('/admin/keys/:id/revoke', requireAdmin, (req, res) => {
 });
 
 // ── APP-FACING: what your other apps actually call ─────────────────────────
+// If the stored session has gone stale and we have a saved password, this
+// transparently re-runs the automated login and updates the stored cookie.
+async function getFreshNdus(account) {
+  const ndus = decrypt(account.ndus_encrypted);
+  try {
+    await terabox.getJsToken(ndus); // cheap way to check the session still works
+    return ndus;
+  } catch (err) {
+    if (!account.password_encrypted) throw err; // no way to auto-refresh, bubble up
+    const password = decrypt(account.password_encrypted);
+    const freshNdus = await autoLogin(account.email, password);
+    db.prepare('UPDATE accounts SET ndus_encrypted = ?, updated_at = datetime(\'now\') WHERE id = ?')
+      .run(encrypt(freshNdus), account.id);
+    return freshNdus;
+  }
+}
+
 app.get('/v1/files', requireApiKey, async (req, res) => {
   try {
     const account = db.prepare('SELECT * FROM accounts WHERE label = ?').get(req.accountLabel);
-    const ndus = decrypt(account.ndus_encrypted);
+    const ndus = await getFreshNdus(account);
     const dir = req.query.dir || '/';
     const files = await terabox.listFiles(ndus, dir);
     res.json({ files });
@@ -197,7 +234,7 @@ app.get('/v1/files', requireApiKey, async (req, res) => {
 app.get('/v1/download/:fsId', requireApiKey, async (req, res) => {
   try {
     const account = db.prepare('SELECT * FROM accounts WHERE label = ?').get(req.accountLabel);
-    const ndus = decrypt(account.ndus_encrypted);
+    const ndus = await getFreshNdus(account);
     const link = await terabox.getDownloadLink(ndus, req.params.fsId);
     res.json({ link });
   } catch (err) {

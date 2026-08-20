@@ -208,17 +208,27 @@
 
   <div class="content" id="tab-accounts">
     <div class="card">
-      <div class="card-head"><div class="icon">🔗</div><div><h2>Connect a TeraBox account</h2><p>Give it a name, then paste your session cookie</p></div></div>
+      <div class="card-head"><div class="icon">🔗</div><div><h2>Connect a TeraBox account</h2><p>Enter your TeraBox login — the vault signs in and grabs the session automatically</p></div></div>
+      <div class="field"><label>Account label</label><input id="accLabel" placeholder="e.g. main, backup" /></div>
+      <div class="field"><label>TeraBox email</label><input id="accEmail" placeholder="you@example.com" type="email" /></div>
+      <div class="field"><label>TeraBox password</label><input id="accPassword" placeholder="Your TeraBox password" type="password" /></div>
+      <button onclick="addAccountAuto()">Connect Automatically</button>
+      <p id="accMsg" class="msg"></p>
+      <p class="hint" style="margin-top:14px;">If this fails (TeraBox showed a captcha or verification step), use manual connect below instead.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><div class="icon">🍪</div><div><h2>Manual connect (fallback)</h2><p>Only needed if automatic connect fails</p></div></div>
       <div class="steps-mini">
         <div class="step-mini"><span class="n">1</span><p>Log into <b>terabox.com</b> in your browser</p></div>
         <div class="step-mini"><span class="n">2</span><p>DevTools → Application → Cookies → find <code>ndus</code></p></div>
         <div class="step-mini"><span class="n">3</span><p>Copy its value and paste it below</p></div>
       </div>
-      <div class="field"><label>Account label</label><input id="accLabel" placeholder="e.g. main, backup" /></div>
-      <div class="field"><label>TeraBox email <span style="font-weight:400;">(reference only)</span></label><input id="accEmail" placeholder="you@example.com" type="email" /></div>
+      <div class="field"><label>Account label</label><input id="accLabelManual" placeholder="e.g. main, backup" /></div>
+      <div class="field"><label>TeraBox email <span style="font-weight:400;">(reference only)</span></label><input id="accEmailManual" placeholder="you@example.com" type="email" /></div>
       <div class="field"><label>Session cookie (ndus)</label><input id="accNdus" placeholder="Paste the ndus cookie value" type="password" /></div>
-      <button onclick="addAccount()">Connect Account</button>
-      <p id="accMsg" class="msg"></p>
+      <button onclick="addAccountManual()">Connect Manually</button>
+      <p id="accMsgManual" class="msg"></p>
     </div>
     <div class="card">
       <div class="card-head"><div class="icon">📦</div><div><h2>Connected accounts</h2><p>Every TeraBox account linked to this vault</p></div></div>
@@ -361,16 +371,31 @@ async function loadAccounts() {
   });
 }
 
-async function addAccount() {
+async function addAccountAuto() {
   const label = document.getElementById('accLabel').value.trim();
   const email = document.getElementById('accEmail').value.trim();
-  const ndus = document.getElementById('accNdus').value.trim();
+  const password = document.getElementById('accPassword').value;
   const msg = document.getElementById('accMsg');
+  if (!label || !email || !password) { msg.className = 'msg err'; msg.textContent = 'Label, email and password are required'; return; }
+  msg.className = 'msg'; msg.textContent = 'Signing in to TeraBox… this can take a few seconds';
+  try {
+    await api('/admin/accounts/auto', { method: 'POST', body: JSON.stringify({ label, email, password }) });
+    msg.className = 'msg ok'; msg.textContent = `Connected "${label}"`;
+    document.getElementById('accLabel').value = ''; document.getElementById('accEmail').value = ''; document.getElementById('accPassword').value = '';
+    loadAccounts(); loadStats();
+  } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
+}
+
+async function addAccountManual() {
+  const label = document.getElementById('accLabelManual').value.trim();
+  const email = document.getElementById('accEmailManual').value.trim();
+  const ndus = document.getElementById('accNdus').value.trim();
+  const msg = document.getElementById('accMsgManual');
   if (!label || !ndus) { msg.className = 'msg err'; msg.textContent = 'Label and session cookie are required'; return; }
   try {
     await api('/admin/accounts', { method: 'POST', body: JSON.stringify({ label, email, ndus }) });
     msg.className = 'msg ok'; msg.textContent = `Connected "${label}"`;
-    document.getElementById('accLabel').value = ''; document.getElementById('accEmail').value = ''; document.getElementById('accNdus').value = '';
+    document.getElementById('accLabelManual').value = ''; document.getElementById('accEmailManual').value = ''; document.getElementById('accNdus').value = '';
     loadAccounts(); loadStats();
   } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
 }
