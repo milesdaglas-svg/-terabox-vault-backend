@@ -2,19 +2,17 @@ services:
   - type: web
     name: terabox-vault-backend
     env: node
-    plan: starter
+    plan: free
     buildCommand: npm install
     startCommand: node server.js
-    disk:
-      name: vault-data
-      mountPath: /data
-      sizeGB: 1
     envVars:
       - key: PORT
         value: 3000
-      - key: DB_PATH
-        value: /data/vault.db
       - key: MASTER_KEY
         sync: false
       - key: ADMIN_TOKEN
+        sync: false
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
         sync: false
