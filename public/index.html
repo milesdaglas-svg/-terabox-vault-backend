@@ -223,7 +223,7 @@
       <div style="background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:20px; max-width:90vw;">
         <p class="hint" style="margin-bottom:10px;">TeraBox is asking for a security check — solve it below, then it continues automatically.</p>
         <div id="liveViewWrap" style="position:relative; display:inline-block; cursor:crosshair;">
-          <img id="liveViewImg" style="max-width:80vw; display:block; border-radius:8px; border:1px solid var(--border);" />
+          <img id="liveViewImg" draggable="false" style="max-width:80vw; display:block; border-radius:8px; border:1px solid var(--border); user-select:none; -webkit-user-drag:none;" />
         </div>
         <div style="display:flex; gap:10px; margin-top:14px;">
           <button class="secondary" style="flex:1;" onclick="checkLiveView()">I've solved it — continue</button>
@@ -452,18 +452,22 @@ function openLiveView(sessionId, screenshotB64) {
   }
 
   let dragging = false;
+  img.ondragstart = (evt) => { evt.preventDefault(); return false; };
   img.onmousedown = async (evt) => {
+    evt.preventDefault();
     dragging = true;
     const { x, y } = toViewportCoords(evt);
     await api(`/admin/accounts/auto/mouse/${currentSessionId}`, { method: 'POST', body: JSON.stringify({ type: 'down', x, y }) }).catch(() => {});
   };
   img.onmousemove = async (evt) => {
     if (!dragging) return;
+    evt.preventDefault();
     const { x, y } = toViewportCoords(evt);
     await api(`/admin/accounts/auto/mouse/${currentSessionId}`, { method: 'POST', body: JSON.stringify({ type: 'move', x, y }) }).catch(() => {});
   };
   window.addEventListener('mouseup', async (evt) => {
     if (!dragging) return;
+    evt.preventDefault();
     dragging = false;
     const { x, y } = toViewportCoords(evt);
     await api(`/admin/accounts/auto/mouse/${currentSessionId}`, { method: 'POST', body: JSON.stringify({ type: 'up', x, y }) }).catch(() => {});
