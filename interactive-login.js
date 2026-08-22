@@ -138,7 +138,9 @@ function touch(sessionId) {
 async function getScreenshot(sessionId) {
   const session = touch(sessionId);
   if (!session) throw new Error('Session expired or not found — start again.');
-  return screenshotOf(session.page);
+  const screenshot = await screenshotOf(session.page);
+  const ndus = await findNdus(session.page);
+  return { screenshot, ndusFound: !!ndus };
 }
 
 // event: { type: 'down'|'move'|'up', x, y }

@@ -155,8 +155,8 @@ app.post('/admin/accounts/auto/start', requireAdmin, async (req, res) => {
 
 app.get('/admin/accounts/auto/screenshot/:sessionId', requireAdmin, async (req, res) => {
   try {
-    const screenshot = await interactiveLogin.getScreenshot(req.params.sessionId);
-    res.json({ screenshot });
+    const result = await interactiveLogin.getScreenshot(req.params.sessionId);
+    res.json(result); // { screenshot, ndusFound }
   } catch (err) {
     res.status(404).json({ error: err.message });
   }

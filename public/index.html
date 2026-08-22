@@ -452,6 +452,7 @@ function openLiveView(sessionId, screenshotB64) {
   }
 
   let dragging = false;
+  let moveInFlight = false; // drop moves while one is still in transit, instead of queueing them up
   img.ondragstart = (evt) => { evt.preventDefault(); return false; };
   img.onmousedown = async (evt) => {
     evt.preventDefault();
@@ -459,11 +460,14 @@ function openLiveView(sessionId, screenshotB64) {
     const { x, y } = toViewportCoords(evt);
     await api(`/admin/accounts/auto/mouse/${currentSessionId}`, { method: 'POST', body: JSON.stringify({ type: 'down', x, y }) }).catch(() => {});
   };
-  img.onmousemove = async (evt) => {
-    if (!dragging) return;
+  img.onmousemove = (evt) => {
+    if (!dragging || moveInFlight) return;
     evt.preventDefault();
+    moveInFlight = true;
     const { x, y } = toViewportCoords(evt);
-    await api(`/admin/accounts/auto/mouse/${currentSessionId}`, { method: 'POST', body: JSON.stringify({ type: 'move', x, y }) }).catch(() => {});
+    api(`/admin/accounts/auto/mouse/${currentSessionId}`, { method: 'POST', body: JSON.stringify({ type: 'move', x, y }) })
+      .catch(() => {})
+      .finally(() => { moveInFlight = false; });
   };
   window.addEventListener('mouseup', async (evt) => {
     if (!dragging) return;
@@ -478,10 +482,14 @@ function openLiveView(sessionId, screenshotB64) {
     try {
       const data = await api(`/admin/accounts/auto/screenshot/${currentSessionId}`);
       img.src = 'data:image/jpeg;base64,' + data.screenshot;
+      if (data.ndusFound) {
+        clearInterval(liveViewPolling);
+        checkLiveView(); // auto-continue — no need to click the button yourself
+      }
     } catch (e) {
       clearInterval(liveViewPolling);
     }
-  }, 700);
+  }, 400);
 }
 
 async function checkLiveView() {
