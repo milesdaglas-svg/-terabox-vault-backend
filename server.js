@@ -5,6 +5,7 @@ const { encrypt, decrypt } = require('./crypto');
 const db = require('./db');
 const terabox = require('./terabox');
 const { autoLogin } = require('./auto-login');
+const interactiveLogin = require('./interactive-login');
 
 const app = express();
 app.use(express.json());
@@ -123,6 +124,79 @@ app.post('/admin/accounts/auto', requireAdmin, async (req, res) => {
   } catch (err) {
     res.status(502).json({ error: err.message, debug: err.debug || null });
   }
+});
+
+// ── ADMIN: interactive connect — for when a captcha needs a human ─────────
+// Starts a login attempt and keeps the browser alive. If a captcha shows up,
+// the dashboard streams screenshots and relays your mouse so you solve it
+// yourself; once solved, the cookie is picked up and the session closes.
+const pendingLabels = new Map(); // sessionId -> label, so /finish knows where to save
+
+app.post('/admin/accounts/auto/start', requireAdmin, async (req, res) => {
+  const { label, email, password } = req.body;
+  if (!label || !email || !password) return res.status(400).json({ error: 'label, email and password required' });
+
+  try {
+    const result = await interactiveLogin.startInteractiveLogin(email, password);
+    if (result.done) {
+      await db.run(
+        `INSERT INTO accounts (label, email, password_encrypted, ndus_encrypted) VALUES (?, ?, ?, ?)
+         ON CONFLICT(label) DO UPDATE SET email = excluded.email, password_encrypted = excluded.password_encrypted, ndus_encrypted = excluded.ndus_encrypted, updated_at = datetime('now')`,
+        [label, email, encrypt(password), encrypt(result.ndus)]
+      );
+      return res.json({ done: true, label });
+    }
+    pendingLabels.set(result.sessionId, { label, email, password });
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: err.message, debug: err.debug || null });
+  }
+});
+
+app.get('/admin/accounts/auto/screenshot/:sessionId', requireAdmin, async (req, res) => {
+  try {
+    const screenshot = await interactiveLogin.getScreenshot(req.params.sessionId);
+    res.json({ screenshot });
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
+app.post('/admin/accounts/auto/mouse/:sessionId', requireAdmin, async (req, res) => {
+  try {
+    await interactiveLogin.sendMouseEvent(req.params.sessionId, req.body);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
+app.post('/admin/accounts/auto/finish/:sessionId', requireAdmin, async (req, res) => {
+  const sessionId = req.params.sessionId;
+  try {
+    const result = await interactiveLogin.finishInteractiveLogin(sessionId);
+    if (result.done) {
+      const pending = pendingLabels.get(sessionId);
+      pendingLabels.delete(sessionId);
+      if (pending) {
+        await db.run(
+          `INSERT INTO accounts (label, email, password_encrypted, ndus_encrypted) VALUES (?, ?, ?, ?)
+           ON CONFLICT(label) DO UPDATE SET email = excluded.email, password_encrypted = excluded.password_encrypted, ndus_encrypted = excluded.ndus_encrypted, updated_at = datetime('now')`,
+          [pending.label, pending.email, encrypt(pending.password), encrypt(result.ndus)]
+        );
+      }
+      return res.json({ done: true, label: pending && pending.label });
+    }
+    res.json(result);
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
+app.post('/admin/accounts/auto/cancel/:sessionId', requireAdmin, async (req, res) => {
+  pendingLabels.delete(req.params.sessionId);
+  await interactiveLogin.cancelInteractiveLogin(req.params.sessionId);
+  res.json({ ok: true });
 });
 
 // ── ADMIN: store/update a TeraBox account's session cookie manually ───────

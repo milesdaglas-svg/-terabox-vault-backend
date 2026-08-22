@@ -218,6 +218,21 @@
       <p class="hint" style="margin-top:14px;">If this fails (TeraBox showed a captcha or verification step), use manual connect below instead.</p>
     </div>
 
+    <!-- Live-view modal for solving a captcha yourself mid-automation -->
+    <div id="liveViewModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:1000; align-items:center; justify-content:center;">
+      <div style="background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:20px; max-width:90vw;">
+        <p class="hint" style="margin-bottom:10px;">TeraBox is asking for a security check — solve it below, then it continues automatically.</p>
+        <div id="liveViewWrap" style="position:relative; display:inline-block; cursor:crosshair;">
+          <img id="liveViewImg" style="max-width:80vw; display:block; border-radius:8px; border:1px solid var(--border);" />
+        </div>
+        <div style="display:flex; gap:10px; margin-top:14px;">
+          <button class="secondary" style="flex:1;" onclick="checkLiveView()">I've solved it — continue</button>
+          <button class="danger-outline" onclick="cancelLiveView()">Cancel</button>
+        </div>
+        <p id="liveViewMsg" class="msg"></p>
+      </div>
+    </div>
+
     <div class="card">
       <div class="card-head"><div class="icon">🍪</div><div><h2>Manual connect (fallback)</h2><p>Only needed if automatic connect fails</p></div></div>
       <div class="steps-mini">
@@ -376,6 +391,9 @@ async function loadAccounts() {
   });
 }
 
+let currentSessionId = null;
+let liveViewPolling = null;
+
 async function addAccountAuto() {
   const label = document.getElementById('accLabel').value.trim();
   const email = document.getElementById('accEmail').value.trim();
@@ -386,10 +404,15 @@ async function addAccountAuto() {
   if (!label || !email || !password) { msg.className = 'msg err'; msg.textContent = 'Label, email and password are required'; return; }
   msg.className = 'msg'; msg.textContent = 'Signing in to TeraBox… this can take a few seconds';
   try {
-    await api('/admin/accounts/auto', { method: 'POST', body: JSON.stringify({ label, email, password }) });
-    msg.className = 'msg ok'; msg.textContent = `Connected "${label}"`;
-    document.getElementById('accLabel').value = ''; document.getElementById('accEmail').value = ''; document.getElementById('accPassword').value = '';
-    loadAccounts(); loadStats();
+    const result = await api('/admin/accounts/auto/start', { method: 'POST', body: JSON.stringify({ label, email, password }) });
+    if (result.done) {
+      msg.className = 'msg ok'; msg.textContent = `Connected "${label}"`;
+      document.getElementById('accLabel').value = ''; document.getElementById('accEmail').value = ''; document.getElementById('accPassword').value = '';
+      loadAccounts(); loadStats();
+    } else {
+      msg.className = 'msg'; msg.textContent = 'Needs a quick security check — solve it in the window that opened.';
+      openLiveView(result.sessionId, result.screenshot);
+    }
   } catch (e) {
     msg.className = 'msg err'; msg.textContent = e.message;
     if (e.debug && e.debug.screenshot) {
@@ -407,6 +430,87 @@ async function addAccountAuto() {
         </div>`;
     }
   }
+}
+
+function openLiveView(sessionId, screenshotB64) {
+  currentSessionId = sessionId;
+  const modal = document.getElementById('liveViewModal');
+  const img = document.getElementById('liveViewImg');
+  img.src = 'data:image/jpeg;base64,' + screenshotB64;
+  document.getElementById('liveViewMsg').textContent = '';
+  modal.style.display = 'flex';
+
+  const VIEWPORT = { width: 1280, height: 900 };
+  function toViewportCoords(evt) {
+    const rect = img.getBoundingClientRect();
+    const scaleX = VIEWPORT.width / rect.width;
+    const scaleY = VIEWPORT.height / rect.height;
+    return {
+      x: Math.round((evt.clientX - rect.left) * scaleX),
+      y: Math.round((evt.clientY - rect.top) * scaleY),
+    };
+  }
+
+  let dragging = false;
+  img.onmousedown = async (evt) => {
+    dragging = true;
+    const { x, y } = toViewportCoords(evt);
+    await api(`/admin/accounts/auto/mouse/${currentSessionId}`, { method: 'POST', body: JSON.stringify({ type: 'down', x, y }) }).catch(() => {});
+  };
+  img.onmousemove = async (evt) => {
+    if (!dragging) return;
+    const { x, y } = toViewportCoords(evt);
+    await api(`/admin/accounts/auto/mouse/${currentSessionId}`, { method: 'POST', body: JSON.stringify({ type: 'move', x, y }) }).catch(() => {});
+  };
+  window.addEventListener('mouseup', async (evt) => {
+    if (!dragging) return;
+    dragging = false;
+    const { x, y } = toViewportCoords(evt);
+    await api(`/admin/accounts/auto/mouse/${currentSessionId}`, { method: 'POST', body: JSON.stringify({ type: 'up', x, y }) }).catch(() => {});
+  });
+
+  if (liveViewPolling) clearInterval(liveViewPolling);
+  liveViewPolling = setInterval(async () => {
+    try {
+      const data = await api(`/admin/accounts/auto/screenshot/${currentSessionId}`);
+      img.src = 'data:image/jpeg;base64,' + data.screenshot;
+    } catch (e) {
+      clearInterval(liveViewPolling);
+    }
+  }, 700);
+}
+
+async function checkLiveView() {
+  const msg = document.getElementById('liveViewMsg');
+  msg.className = 'msg'; msg.textContent = 'Checking…';
+  try {
+    const result = await api(`/admin/accounts/auto/finish/${currentSessionId}`, { method: 'POST', body: JSON.stringify({}) });
+    if (result.done) {
+      closeLiveView();
+      const accMsg = document.getElementById('accMsg');
+      accMsg.className = 'msg ok'; accMsg.textContent = `Connected "${result.label}"`;
+      document.getElementById('accLabel').value = ''; document.getElementById('accEmail').value = ''; document.getElementById('accPassword').value = '';
+      loadAccounts(); loadStats();
+    } else {
+      document.getElementById('liveViewImg').src = 'data:image/jpeg;base64,' + result.screenshot;
+      msg.className = 'msg err'; msg.textContent = 'Not quite yet — keep going, then try again.';
+    }
+  } catch (e) {
+    msg.className = 'msg err'; msg.textContent = e.message;
+  }
+}
+
+async function cancelLiveView() {
+  if (currentSessionId) {
+    await api(`/admin/accounts/auto/cancel/${currentSessionId}`, { method: 'POST', body: JSON.stringify({}) }).catch(() => {});
+  }
+  closeLiveView();
+}
+
+function closeLiveView() {
+  if (liveViewPolling) clearInterval(liveViewPolling);
+  document.getElementById('liveViewModal').style.display = 'none';
+  currentSessionId = null;
 }
 
 async function addAccountManual() {

@@ -95,8 +95,8 @@ curl http://localhost:3000/v1/download/FS_ID_HERE \
 ## Notes
 
 - **Automatic connect** uses a headless browser (Puppeteer) to log into TeraBox with your email/password and grab the session cookie for you — no manual DevTools digging needed in the normal case.
-- Puppeteer bundles a real Chromium browser, which is heavier than a typical Node app. On Render's **free tier this may run out of memory** during login — if `/admin/accounts/auto` times out or the service restarts unexpectedly, that's likely why; upgrading to a paid instance (more RAM) fixes it.
-- Automatic connect **can't get past a captcha or a verification-code prompt** — if TeraBox throws one of those at login, it'll fail with an error telling you to use manual connect instead (paste the `ndus` cookie yourself from DevTools).
+- Puppeteer bundles a real Chromium browser, which is heavier than a typical Node app. On Render's **free tier this may run out of memory** during login — if it times out or the service restarts unexpectedly, that's likely why; upgrading to a paid instance (more RAM) fixes it.
+- **If a captcha shows up**, a live-view panel opens right in the dashboard streaming the actual TeraBox page — drag to solve the puzzle yourself (you're the one solving it, same as intended), then click "I've solved it — continue." This keeps a real browser open server-side while you solve it (up to 5 minutes before it auto-expires), which strains memory more than the plain path — expect it to be tight on a free-tier instance.
 - Once connected, if a session goes stale, the backend automatically re-runs the login using your saved (encrypted) password and refreshes the cookie — you shouldn't need to reconnect manually unless a captcha shows up.
 - Your data (accounts, keys, projects, login) lives on Turso, not on Render's disk — free tier redeploys no longer wipe anything.
 - Revoke a key anytime: `POST /admin/keys/:id/revoke`.
