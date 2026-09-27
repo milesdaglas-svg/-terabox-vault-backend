@@ -12,8 +12,11 @@
   "dependencies": {
     "@libsql/client": "^0.14.0",
     "axios": "^1.19.0",
+    "cors": "^2.8.5",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "form-data": "^4.0.0",
+    "multer": "^1.4.5-lts.1",
     "puppeteer": "^23.0.0"
   }
 }

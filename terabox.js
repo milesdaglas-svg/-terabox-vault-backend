@@ -19,8 +19,16 @@
  */
 
 const axios = require('axios');
+const crypto = require('crypto');
+const FormData = require('form-data');
 
 const BASE = 'https://www.terabox.com';
+const APP_ID = 250528;
+const CHUNK_SIZE = 4 * 1024 * 1024; // TeraBox's recommended chunk size
+// Upload host is normally resolved dynamically per-session; c-jp is a
+// commonly-working one from reverse-engineering write-ups, but TeraBox
+// may route you elsewhere. If uploads fail, this is the first thing to check.
+const UPLOAD_HOST = 'https://c-jp.terabox.com';
 
 function client(ndus) {
   return axios.create({
@@ -74,4 +82,80 @@ async function getDownloadLink(ndus, fsId) {
   return data.dlink[0].dlink;
 }
 
-module.exports = { listFiles, getDownloadLink, getJsToken };
+function md5(buffer) {
+  return crypto.createHash('md5').update(buffer).digest('hex');
+}
+
+// Uploads a file's raw bytes to TeraBox and returns its fs_id, so it can be
+// referenced from another app (like MLDapps) via /v1/download/:fsId.
+//
+// This is TeraBox's unofficial 3-step upload flow, reverse-engineered (no
+// official API exists): precreate (declare the file + chunk hashes) ->
+// upload each 4MB chunk -> create (finalize, get back the fs_id).
+// Fragile by nature — TeraBox can change hosts/params without notice.
+async function uploadFile(ndus, fileBuffer, remotePath) {
+  const c = client(ndus);
+  const jsToken = await getJsToken(ndus);
+
+  const chunks = [];
+  for (let i = 0; i < fileBuffer.length; i += CHUNK_SIZE) {
+    chunks.push(fileBuffer.subarray(i, i + CHUNK_SIZE));
+  }
+  const blockList = chunks.map(md5);
+
+  // 1. precreate — tells TeraBox what's coming
+  const precreate = await c.post(
+    '/api/precreate',
+    new URLSearchParams({
+      path: remotePath,
+      size: String(fileBuffer.length),
+      autoinit: '1',
+      block_list: JSON.stringify(blockList),
+      rtype: '1',
+    }).toString(),
+    {
+      params: { app_id: APP_ID, jsToken },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    }
+  );
+  if (precreate.data.errno !== 0) {
+    throw new Error(`TeraBox precreate failed, errno ${precreate.data.errno}`);
+  }
+  const uploadid = precreate.data.uploadid;
+
+  // 2. upload each chunk in order
+  for (let i = 0; i < chunks.length; i++) {
+    const form = new FormData();
+    form.append('file', chunks[i], { filename: 'blob' });
+    await axios.post(`${UPLOAD_HOST}/rest/2.0/pcs/superfile2`, form, {
+      params: { method: 'upload', app_id: APP_ID, path: remotePath, uploadid, partseq: i },
+      headers: { ...form.getHeaders(), Cookie: `ndus=${ndus}` },
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+    });
+  }
+
+  // 3. create — finalizes the file and returns its fs_id
+  const create = await c.post(
+    '/api/create',
+    new URLSearchParams({
+      path: remotePath,
+      size: String(fileBuffer.length),
+      uploadid,
+      block_list: JSON.stringify(blockList),
+      isdir: '0',
+      rtype: '1',
+    }).toString(),
+    {
+      params: { app_id: APP_ID, jsToken },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    }
+  );
+  if (create.data.errno !== 0) {
+    throw new Error(`TeraBox create failed, errno ${create.data.errno}`);
+  }
+
+  return { fsId: String(create.data.fs_id), path: remotePath };
+}
+
+module.exports = { listFiles, getDownloadLink, getJsToken, uploadFile };

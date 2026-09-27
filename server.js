@@ -1,6 +1,9 @@
 require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
 const crypto = require('crypto');
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 * 1024 } }); // 2GB cap
 const { encrypt, decrypt } = require('./crypto');
 const db = require('./db');
 const terabox = require('./terabox');
@@ -295,6 +298,11 @@ app.post('/admin/keys/:id/revoke', requireAdmin, async (req, res) => {
 });
 
 // ── APP-FACING: what your other apps actually call ─────────────────────────
+// CORS is open here on purpose — this route is protected by X-Api-Key, not
+// by origin, since apps like MLD Apps' website need to call it from the
+// browser with a key, not a same-origin cookie/session.
+app.use('/v1', cors());
+
 // If the stored session has gone stale and we have a saved password, this
 // transparently re-runs the automated login and updates the stored cookie.
 async function getFreshNdus(account) {
@@ -334,6 +342,19 @@ app.get('/v1/download/:fsId', requireApiKey, async (req, res) => {
     res.json({ link });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/v1/upload', requireApiKey, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'no file provided (expected multipart field "file")' });
+  try {
+    const account = await db.get('SELECT * FROM accounts WHERE label = ?', [req.accountLabel]);
+    const ndus = await getFreshNdus(account);
+    const remotePath = '/' + (req.body.filename || req.file.originalname || `upload_${Date.now()}`);
+    const result = await terabox.uploadFile(ndus, req.file.buffer, remotePath);
+    res.json({ ok: true, fsId: result.fsId, path: result.path });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
   }
 });
 
