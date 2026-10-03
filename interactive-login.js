@@ -19,6 +19,7 @@
 
 const puppeteer = require('puppeteer');
 
+const VIEWPORT = { width: 800, height: 600 }; // smaller = faster screenshots
 const sessions = new Map(); // sessionId -> { browser, page, email, password, lastActive }
 const SESSION_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -33,7 +34,7 @@ setInterval(async () => {
 }, 60 * 1000);
 
 async function screenshotOf(page) {
-  return page.screenshot({ encoding: 'base64', type: 'jpeg', quality: 65 });
+  return page.screenshot({ encoding: 'base64', type: 'jpeg', quality: 50 });
 }
 
 async function findNdus(page) {
@@ -50,7 +51,7 @@ async function startInteractiveLogin(email, password) {
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
   const page = await browser.newPage();
-  await page.setViewport({ width: 1280, height: 900 });
+  await page.setViewport(VIEWPORT);
   await page.setUserAgent(
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
   );
@@ -123,10 +124,10 @@ async function startInteractiveLogin(email, password) {
 
   // Likely a captcha/puzzle appeared. Hand off to the human via live view.
   const sessionId = 'sess_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-  sessions.set(sessionId, { browser, page, email, password, lastActive: Date.now() });
+  sessions.set(sessionId, { browser, page, email, password, lastActive: Date.now(), queue: Promise.resolve() });
 
   const screenshot = await screenshotOf(page);
-  return { done: false, sessionId, screenshot, viewport: { width: 1280, height: 900 } };
+  return { done: false, sessionId, screenshot, viewport: VIEWPORT };
 }
 
 function touch(sessionId) {
@@ -135,23 +136,39 @@ function touch(sessionId) {
   return s;
 }
 
+// Run page operations one at a time per session so screenshots never overlap
+// mouse actions (that overlap was causing the stacking/lag).
+function enqueue(session, fn) {
+  const run = session.queue.then(fn, fn);
+  session.queue = run.catch(() => {});
+  return run;
+}
+
 async function getScreenshot(sessionId) {
   const session = touch(sessionId);
   if (!session) throw new Error('Session expired or not found — start again.');
-  const screenshot = await screenshotOf(session.page);
-  const ndus = await findNdus(session.page);
-  return { screenshot, ndusFound: !!ndus };
+  return enqueue(session, async () => {
+    const screenshot = await screenshotOf(session.page);
+    const ndus = await findNdus(session.page);
+    return { screenshot, ndusFound: !!ndus };
+  });
 }
 
 // event: { type: 'down'|'move'|'up', x, y }
+// Applies the mouse action and returns a fresh screenshot in the same call.
 async function sendMouseEvent(sessionId, event) {
   const session = touch(sessionId);
   if (!session) throw new Error('Session expired or not found — start again.');
   const { page } = session;
   const { type, x, y } = event;
-  if (type === 'down') await page.mouse.move(x, y).then(() => page.mouse.down());
-  else if (type === 'move') await page.mouse.move(x, y);
-  else if (type === 'up') await page.mouse.move(x, y).then(() => page.mouse.up());
+  return enqueue(session, async () => {
+    if (type === 'down') { await page.mouse.move(x, y); await page.mouse.down(); }
+    else if (type === 'move') await page.mouse.move(x, y);
+    else if (type === 'up') { await page.mouse.move(x, y); await page.mouse.up(); }
+    const screenshot = await screenshotOf(page);
+    const ndusFound = type === 'up' ? !!(await findNdus(page)) : false;
+    return { screenshot, ndusFound };
+  });
 }
 
 // Call after the human finishes interacting — checks if the cookie showed

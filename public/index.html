@@ -440,56 +440,59 @@ function openLiveView(sessionId, screenshotB64) {
   document.getElementById('liveViewMsg').textContent = '';
   modal.style.display = 'flex';
 
-  const VIEWPORT = { width: 1280, height: 900 };
+  const VIEWPORT = { width: 800, height: 600 };
   function toViewportCoords(evt) {
     const rect = img.getBoundingClientRect();
-    const scaleX = VIEWPORT.width / rect.width;
-    const scaleY = VIEWPORT.height / rect.height;
     return {
-      x: Math.round((evt.clientX - rect.left) * scaleX),
-      y: Math.round((evt.clientY - rect.top) * scaleY),
+      x: Math.round((evt.clientX - rect.left) * (VIEWPORT.width / rect.width)),
+      y: Math.round((evt.clientY - rect.top) * (VIEWPORT.height / rect.height)),
     };
   }
 
-  let dragging = false;
-  let moveInFlight = false; // drop moves while one is still in transit, instead of queueing them up
+  // ONE loop: each mouse event returns its own screenshot. Only the latest
+  // pending move is kept (older ones are dropped), down/up are never dropped.
+  let dragging = false, busy = false, pendingMove = null, queue = [], stopped = false;
+  function render(data) {
+    if (data && data.screenshot) img.src = 'data:image/jpeg;base64,' + data.screenshot;
+    if (data && data.ndusFound) { stopped = true; checkLiveView(); }
+  }
+  async function pump() {
+    if (busy || stopped) return;
+    busy = true;
+    try {
+      while (!stopped && (queue.length || pendingMove)) {
+        const ev = queue.length ? queue.shift() : pendingMove;
+        if (ev === pendingMove) pendingMove = null;
+        try {
+          render(await api(`/admin/accounts/auto/mouse/${currentSessionId}`, { method: 'POST', body: JSON.stringify(ev) }));
+        } catch (e) { /* ignore, keep going */ }
+      }
+    } finally { busy = false; }
+  }
+  function send(ev) {
+    if (ev.type === 'move') pendingMove = ev; else { pendingMove = null; queue.push(ev); }
+    pump();
+  }
+
   img.ondragstart = (evt) => { evt.preventDefault(); return false; };
-  img.onmousedown = async (evt) => {
-    evt.preventDefault();
-    dragging = true;
-    const { x, y } = toViewportCoords(evt);
-    await api(`/admin/accounts/auto/mouse/${currentSessionId}`, { method: 'POST', body: JSON.stringify({ type: 'down', x, y }) }).catch(() => {});
-  };
-  img.onmousemove = (evt) => {
-    if (!dragging || moveInFlight) return;
-    evt.preventDefault();
-    moveInFlight = true;
-    const { x, y } = toViewportCoords(evt);
-    api(`/admin/accounts/auto/mouse/${currentSessionId}`, { method: 'POST', body: JSON.stringify({ type: 'move', x, y }) })
-      .catch(() => {})
-      .finally(() => { moveInFlight = false; });
-  };
-  window.addEventListener('mouseup', async (evt) => {
+  img.onmousedown = (evt) => { evt.preventDefault(); dragging = true; send({ type: 'down', ...toViewportCoords(evt) }); };
+  img.onmousemove = (evt) => { if (!dragging) return; evt.preventDefault(); send({ type: 'move', ...toViewportCoords(evt) }); };
+  window.addEventListener('mouseup', (evt) => {
     if (!dragging) return;
-    evt.preventDefault();
     dragging = false;
-    const { x, y } = toViewportCoords(evt);
-    await api(`/admin/accounts/auto/mouse/${currentSessionId}`, { method: 'POST', body: JSON.stringify({ type: 'up', x, y }) }).catch(() => {});
+    send({ type: 'up', ...toViewportCoords(evt) });
   });
 
-  if (liveViewPolling) clearInterval(liveViewPolling);
-  liveViewPolling = setInterval(async () => {
-    try {
-      const data = await api(`/admin/accounts/auto/screenshot/${currentSessionId}`);
-      img.src = 'data:image/jpeg;base64,' + data.screenshot;
-      if (data.ndusFound) {
-        clearInterval(liveViewPolling);
-        checkLiveView(); // auto-continue — no need to click the button yourself
-      }
-    } catch (e) {
-      clearInterval(liveViewPolling);
+  // Slow idle refresh only (animations / ndus check). Skips while dragging or busy.
+  if (liveViewPolling) clearTimeout(liveViewPolling);
+  const idle = async () => {
+    if (stopped || !currentSessionId) return;
+    if (!dragging && !busy) {
+      try { render(await api(`/admin/accounts/auto/screenshot/${currentSessionId}`)); } catch (e) { return; }
     }
-  }, 400);
+    liveViewPolling = setTimeout(idle, 1500);
+  };
+  liveViewPolling = setTimeout(idle, 1500);
 }
 
 async function checkLiveView() {
@@ -520,7 +523,7 @@ async function cancelLiveView() {
 }
 
 function closeLiveView() {
-  if (liveViewPolling) clearInterval(liveViewPolling);
+  if (liveViewPolling) clearTimeout(liveViewPolling);
   document.getElementById('liveViewModal').style.display = 'none';
   currentSessionId = null;
 }

@@ -167,8 +167,8 @@ app.get('/admin/accounts/auto/screenshot/:sessionId', requireAdmin, async (req, 
 
 app.post('/admin/accounts/auto/mouse/:sessionId', requireAdmin, async (req, res) => {
   try {
-    await interactiveLogin.sendMouseEvent(req.params.sessionId, req.body);
-    res.json({ ok: true });
+    const result = await interactiveLogin.sendMouseEvent(req.params.sessionId, req.body);
+    res.json(result); // { screenshot, ndusFound }
   } catch (err) {
     res.status(404).json({ error: err.message });
   }
